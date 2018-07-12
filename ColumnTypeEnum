@@ -1,0 +1,6 @@
+
+public enum ColumnTypeEnum {
+	
+	INTEGER, DOUBLE, DATE
+
+}
