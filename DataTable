@@ -1,0 +1,66 @@
+
+import java.util.List;
+import java.util.Map;
+
+public class DataTable {
+
+	private String tableName;
+
+	private List<TableHeader> tableHeaders;
+
+	private List<Map<String, String>> excelContents;
+
+	private String tableHeaderTitle;
+
+	private List<Region> regions;
+
+	private CellsStyle tableHeaderStyle;
+
+	public CellsStyle getSheetHeaderStyle() {
+		return tableHeaderStyle;
+	}
+
+	public void setSheetHeaderStyle(CellsStyle sheetHeaderStyle) {
+		this.tableHeaderStyle = sheetHeaderStyle;
+	}
+
+	public String getTableHeaderTitle() {
+		return tableHeaderTitle;
+	}
+
+	public void setTableHeaderTitle(String tableHeaderTitle) {
+		this.tableHeaderTitle = tableHeaderTitle;
+	}
+
+	public List<TableHeader> getTableHeaders() {
+		return tableHeaders;
+	}
+
+	public void setTableHeaders(List<TableHeader> tableHeaders) {
+		this.tableHeaders = tableHeaders;
+	}
+
+	public List<Map<String, String>> getExcelContents() {
+		return excelContents;
+	}
+
+	public void setExcelContents(List<Map<String, String>> excelContents) {
+		this.excelContents = excelContents;
+	}
+
+	public String getTableName() {
+		return tableName;
+	}
+
+	public void setTableName(String tableName) {
+		this.tableName = tableName;
+	}
+
+	public List<Region> getRegions() {
+		return regions;
+	}
+
+	public void setRegions(List<Region> regions) {
+		this.regions = regions;
+	}
+}
