@@ -1,0 +1,598 @@
+package com.scb.cic.excel.impl.service;
+
+import java.awt.Color;
+import java.io.ByteArrayOutputStream;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.CreationHelper;
+import org.apache.poi.ss.util.CellRangeAddress;
+import org.apache.poi.ss.util.CellReference;
+import org.apache.poi.xssf.streaming.SXSSFCell;
+import org.apache.poi.xssf.streaming.SXSSFRow;
+import org.apache.poi.xssf.streaming.SXSSFSheet;
+import org.apache.poi.xssf.streaming.SXSSFWorkbook;
+import org.apache.poi.xssf.usermodel.XSSFCellStyle;
+import org.apache.poi.xssf.usermodel.XSSFColor;
+import org.apache.poi.xssf.usermodel.XSSFFont;
+
+import com.scb.cic.excel.api.service.ExcelReport;
+import com.scb.cic.excel.dto.CellsStyle;
+import com.scb.cic.excel.dto.DataTable;
+import com.scb.cic.excel.dto.Region;
+import com.scb.cic.excel.dto.Region.RegionAction;
+import com.scb.cic.excel.dto.Region.RegionDirection;
+import com.scb.cic.excel.dto.TableHeader;
+import com.scb.cic.excel.dto.WorkBookModel;
+import com.scb.cic.excel.dto.WorkSheetContent;
+import com.scb.cic.excel.util.ColorEnum;
+import com.scb.cic.excel.util.ColumnTypeEnum;
+import com.scb.cic.wb.commons.exception.ServiceException;
+
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
+public class ExcelReportImpl implements ExcelReport {
+
+	private static final String DEFAULT_DATE_FORMAT = "dd MMM yyyy";
+	private static final String DEFAULT_FONT_CALIBRI = "Calibri";
+	private static final String SUM_FORMULA= "SUM(%s:%s)";
+	private SXSSFWorkbook multiSheetMultiTableWorkBook = null;
+	public static final int DEFAULT_WINDOW_SIZE = 5000;
+
+	public ExcelReportImpl() {
+
+	}
+
+	@Override
+	public ByteArrayOutputStream generateExcel(List<WorkSheetContent> listOfWorkSheetContent) throws ServiceException {
+			return generateWorksheet(listOfWorkSheetContent);
+	}
+
+	@Override
+	public ByteArrayOutputStream generateExcel(List<WorkSheetContent> listOfWorkSheetContent, WorkBookModel model) throws ServiceException {
+		return generateExcelWorkBook(listOfWorkSheetContent, model);
+	}
+	private ByteArrayOutputStream generateExcelWorkBook(List<WorkSheetContent> listOfWorkSheetContent, WorkBookModel model) throws ServiceException {
+		ByteArrayOutputStream responseContent = null;
+		try{
+			responseContent = new ByteArrayOutputStream();
+			if(listOfWorkSheetContent == null || listOfWorkSheetContent.isEmpty()){
+				return responseContent;
+			}
+			createWorkBook(listOfWorkSheetContent, model);
+			getWorkSheet(listOfWorkSheetContent, model);
+			if(model.isStartFlag()){
+				createSheetHeader(listOfWorkSheetContent, model);	
+			}
+			writeExcelContents(listOfWorkSheetContent, model);
+			if(model.isEndFlag()){
+				if(multiSheetMultiTableWorkBook != null){
+					multiSheetMultiTableWorkBook.write(responseContent);
+				}
+			}
+		} catch(Exception ex){
+			log.error("The exception in writing the excel {} ", ex);
+			throw new ServiceException(ex);
+		}
+		return responseContent;
+	}
+	
+	
+	private void createWorkBook(List<WorkSheetContent> listOfWorkSheetContent, WorkBookModel model) throws Exception{
+		if(model.isStartFlag()){
+			multiSheetMultiTableWorkBook = new SXSSFWorkbook(DEFAULT_WINDOW_SIZE);
+			WorkSheetContent content = listOfWorkSheetContent.get(0);
+			if(content == null || content.getSheetName() == null || "".equals(content.getSheetName())){
+				throw new Exception();
+			}
+			model.setSxssfWorkbook(multiSheetMultiTableWorkBook);
+		} else{
+			multiSheetMultiTableWorkBook = model.getSxssfWorkbook();
+		}
+	}
+	private SXSSFSheet getWorkSheet(List<WorkSheetContent> listOfWorkSheetContent, WorkBookModel model){
+		SXSSFSheet workSheet = null;
+		WorkSheetContent workSheetContent = listOfWorkSheetContent.get(0);
+		if(model.isStartFlag()){
+			workSheet = (SXSSFSheet) multiSheetMultiTableWorkBook.createSheet(workSheetContent.getSheetName());
+		} else{
+			workSheet = (SXSSFSheet) multiSheetMultiTableWorkBook.getSheetAt(0);
+		}
+		return workSheet;
+	}
+	private void createSheetHeader(List<WorkSheetContent> listOfWorkSheetContent, WorkBookModel model) throws Exception{
+		SXSSFSheet workSheet = null;
+		int rowNum = 1;
+		Boolean firstDataTable = true;
+		Boolean firstDataTableHeader = true;
+		Boolean firstTable = true;
+		model.setStartFlag(false);
+		workSheet = getWorkSheet(listOfWorkSheetContent, model);
+		WorkSheetContent workSheetContent = listOfWorkSheetContent.get(0);
+		if(workSheetContent.getDataTables() == null || workSheetContent.getDataTables().isEmpty()){
+			throw new Exception();
+		}
+		DataTable dataTable = workSheetContent.getDataTables().get(0);
+		List<String> headers = new ArrayList<String>();
+		List<Integer> widths = new ArrayList<Integer>();
+		List<String> columnType = new ArrayList<String>();
+		String tableHeaderTitle = dataTable.getTableHeaderTitle();
+		for (TableHeader header : dataTable.getTableHeaders()) {
+			headers.add(header.getColumnName());
+			widths.add(header.getColumnWidth());
+			columnType.add(header.getColumnType());
+		}
+		int horizontalSpace = workSheetContent.getHorizontalSpace();
+		int verticalSpace = workSheetContent.getVertialSpace();
+		String filterRange = workSheetContent.getFilterRange();
+		setWorksheetStyle(workSheet, widths, filterRange, verticalSpace);
+		if (workSheetContent.getSheetHeaderStyle() != null && workSheetContent.getSheetHeader() != null) {
+			setWorkSheetHeader(workSheetContent.getSheetHeader(), multiSheetMultiTableWorkBook, workSheet, headers, verticalSpace, workSheetContent.getSheetHeaderStyle());
+		}else if(workSheetContent.getSheetHeader() == null && firstTable){
+			rowNum = 0;
+		}
+		if (dataTable.getSheetHeaderStyle() != null && dataTable.getTableHeaderTitle() != null) {
+			setTableHeader(tableHeaderTitle, multiSheetMultiTableWorkBook, workSheet, headers, rowNum, horizontalSpace, verticalSpace,
+					dataTable.getSheetHeaderStyle(), firstDataTable);
+		}else if (workSheetContent.getSheetHeader() == null && firstTable) {
+			rowNum = rowNum - 1;
+		}else if(firstTable){
+			rowNum = 0;
+		}else if(!firstTable){
+			--rowNum;
+		}
+		if (headers.size() > 0 && dataTable.getExcelContents() != null && !dataTable.getExcelContents().isEmpty()) {
+			rowNum = writeExcelHeader(multiSheetMultiTableWorkBook, workSheet, headers, rowNum, horizontalSpace, verticalSpace, firstDataTableHeader);
+		}
+		firstDataTable = false;
+		firstDataTableHeader = false;
+		model.setLastRowNum(rowNum);
+	}
+	private void writeExcelContents(List<WorkSheetContent> listOfWorkSheetContent, WorkBookModel model) throws Exception{
+		SXSSFSheet workSheet = null;
+		int rowNum = model.getLastRowNum();
+		workSheet = getWorkSheet(listOfWorkSheetContent, model);
+		WorkSheetContent workSheetContent = listOfWorkSheetContent.get(0);
+		if(workSheetContent.getDataTables() == null || workSheetContent.getDataTables().isEmpty()){
+			throw new Exception();
+		}
+		DataTable dataTable = workSheetContent.getDataTables().get(0);
+		String columnTypeHeader = null;
+		String columnFormatHeader = null;
+		List<String> headers = new ArrayList<String>();
+		List<Integer> widths = new ArrayList<Integer>();
+		List<String> columnType = new ArrayList<String>();
+		List<String> columnFormat = new ArrayList<String>();
+		for (TableHeader header : dataTable.getTableHeaders()) {
+			headers.add(header.getColumnName());
+			widths.add(header.getColumnWidth());
+			columnType.add(header.getColumnType());
+			if (header.getColumnFormat() != null) {
+				columnFormat.add(header.getColumnFormat());
+			} else {
+				columnFormat.add(DEFAULT_DATE_FORMAT);
+			}
+		}
+		int verticalSpace = workSheetContent.getVertialSpace();
+		CellStyle style = getCellStyle(multiSheetMultiTableWorkBook);
+		CellStyle cellDateStyle = (CellStyle)getCellStyle(multiSheetMultiTableWorkBook);
+		CreationHelper createHelper = multiSheetMultiTableWorkBook.getCreationHelper();
+		
+		if(dataTable.getExcelContents() == null || dataTable.getExcelContents().isEmpty()){
+			return;
+		}
+		for (Map<String, String> excelContent : dataTable.getExcelContents()) {
+			int i = 0;
+			if (excelContent != null && headers.size() > 0) {
+				SXSSFRow row;
+				row = (SXSSFRow) workSheet.createRow(++rowNum);
+				int columnTypeIndex = 0;
+				for (String key : headers) {
+					columnTypeHeader = columnType.get(columnTypeIndex);
+					columnFormatHeader = columnFormat.get(columnTypeIndex);
+					columnTypeIndex = columnTypeIndex + 1;
+					SXSSFCell cell = (SXSSFCell) row.createCell((i++) + verticalSpace);
+					String excelContentValue = excelContent.get(key);
+					try {
+						if (columnTypeHeader.equalsIgnoreCase(ColumnTypeEnum.DOUBLE.toString())) {
+							cell.setCellValue(Double.valueOf(excelContentValue));
+							cell.setCellStyle(style);
+						} else if (columnTypeHeader.equalsIgnoreCase(ColumnTypeEnum.INTEGER.toString())) {
+							cell.setCellValue(Integer.valueOf(excelContentValue));
+							cell.setCellStyle(style);
+						} else if (columnTypeHeader.equalsIgnoreCase(ColumnTypeEnum.DATE.toString())) {
+							short dateFormat = createHelper.createDataFormat().getFormat(columnFormatHeader);
+							cellDateStyle.setDataFormat(dateFormat);
+							SimpleDateFormat formatter = new SimpleDateFormat(columnFormatHeader);
+							Date date = formatter.parse(excelContentValue);
+							cell.setCellValue(date);
+							cell.setCellStyle(cellDateStyle);
+						} else {
+							cell.setCellValue(excelContentValue);
+							cell.setCellStyle(style);
+						}
+					} catch (ParseException e) {
+						log.error("The exception occurred during writing the wrong {} format -  Expected {} Format : {} Received Value : {}", columnTypeHeader,
+								columnTypeHeader, columnFormatHeader, excelContentValue);
+					}
+				}
+			}
+		}
+		model.setLastRowNum(rowNum);
+	}
+	
+	private ByteArrayOutputStream generateWorksheet(List<WorkSheetContent> listOfWorkSheetContent) {
+		ByteArrayOutputStream responseContent = null;
+		SXSSFWorkbook multiSheetMultiTableWorkBook = new SXSSFWorkbook(DEFAULT_WINDOW_SIZE);
+		SXSSFSheet workSheet = null;
+		try {
+			responseContent = new ByteArrayOutputStream();
+			for (WorkSheetContent workSheetContent : listOfWorkSheetContent) {
+
+				workSheet = (SXSSFSheet) multiSheetMultiTableWorkBook.createSheet(workSheetContent.getSheetName());
+				log.info("**********Password: {} for the Sheet Name: {} ************ ", workSheetContent.getPassword(), workSheetContent.getSheetName());
+				if (workSheetContent.getPassword() != null ) {
+					log.info("**********Password is set for the Sheet : {}" , workSheetContent.getSheetName());
+					workSheet.protectSheet(workSheetContent.getPassword());
+				}
+				log.info("**********Password for the Sheeet is : {} after null check", workSheetContent.getPassword());
+				int rowNum = 1;
+				String sheetHeader = workSheetContent.getSheetHeader();
+				int horizontalSpace = workSheetContent.getHorizontalSpace();
+				int verticalSpace = workSheetContent.getVertialSpace();
+				Boolean firstDataTable = true;
+				Boolean firstDataTableHeader = true;
+				Boolean firstTable = true;
+				Boolean setSheedHeader = true;
+
+				for (DataTable dataTable : workSheetContent.getDataTables()) {
+
+					List<String> headers = new ArrayList<String>();
+					List<Integer> widths = new ArrayList<Integer>();
+					List<String> columnType = new ArrayList<String>();
+					String tableHeaderTitle = dataTable.getTableHeaderTitle();
+
+					for (TableHeader header : dataTable.getTableHeaders()) {
+						headers.add(header.getColumnName());
+						widths.add(header.getColumnWidth());
+						columnType.add(header.getColumnType());
+					}
+
+					String filterRange = workSheetContent.getFilterRange();
+					setWorksheetStyle(workSheet, widths, filterRange, verticalSpace);
+
+					if (workSheetContent.getSheetHeaderStyle() != null && workSheetContent.getSheetHeader() != null && (setSheedHeader)) {
+						setWorkSheetHeader(sheetHeader, multiSheetMultiTableWorkBook, workSheet, headers, verticalSpace, workSheetContent.getSheetHeaderStyle());
+					}else if(workSheetContent.getSheetHeader() == null && firstTable){
+						rowNum = 0;
+					}
+					setSheedHeader = false;
+					
+					if (dataTable.getSheetHeaderStyle() != null && dataTable.getTableHeaderTitle() != null) {
+						setTableHeader(tableHeaderTitle, multiSheetMultiTableWorkBook, workSheet, headers, rowNum, horizontalSpace, verticalSpace,
+								dataTable.getSheetHeaderStyle(), firstDataTable);
+					}else if (workSheetContent.getSheetHeader() == null && firstTable) {
+						rowNum = rowNum - 1;
+					}else if(firstTable){
+						rowNum = 0;
+					}else if(!firstTable){
+						--rowNum;
+					}
+
+
+					if (headers.size() > 0 && dataTable.getExcelContents() != null && !dataTable.getExcelContents().isEmpty()) {
+						rowNum = writeExcelHeader(multiSheetMultiTableWorkBook, workSheet, headers, rowNum, horizontalSpace, verticalSpace, firstDataTableHeader);
+					}
+					firstDataTable = false;
+					firstDataTableHeader = false;
+
+					CreationHelper createHelper = multiSheetMultiTableWorkBook.getCreationHelper();
+					XSSFCellStyle cellStyle = (XSSFCellStyle) multiSheetMultiTableWorkBook.createCellStyle();
+
+					String columnTypeHeader = null;
+					short dateFormat = createHelper.createDataFormat().getFormat(DEFAULT_DATE_FORMAT);
+					CellStyle style = getCellStyle(multiSheetMultiTableWorkBook);
+
+					int start = 0;
+					SXSSFCell cell = null;
+					int dtfRow = 0;
+					int dtfColumn = 0;
+					for (Map<String, String> excelContent : dataTable.getExcelContents()) {
+						int i = 0;
+						if (excelContent != null && headers.size() > 0) {
+							SXSSFRow row = (SXSSFRow) workSheet.createRow(++rowNum);
+							int columnIndex = 0;
+
+							for (String key : headers) {
+								columnTypeHeader = columnType.get(columnIndex);
+								cell = (SXSSFCell) row.createCell((i++) + verticalSpace);
+								if (start++ == 0 && columnIndex == 0) {
+									dtfRow = cell.getRowIndex();
+									dtfColumn = cell.getColumnIndex();
+									log.info("dtfRow : {}, dtfColumn : {} ", dtfRow, dtfColumn);
+								}
+								columnIndex = columnIndex + 1;
+
+								if (columnTypeHeader.equalsIgnoreCase(ColumnTypeEnum.DOUBLE.toString())
+										&& excelContent.get(key) != null) {
+									cell.setCellValue(new Double(excelContent.get(key)));
+								} else if (columnTypeHeader.equalsIgnoreCase(ColumnTypeEnum.INTEGER.toString())
+										&& excelContent.get(key) != null) {
+									cell.setCellValue(new Integer(excelContent.get(key)));
+								} else if (columnTypeHeader.equalsIgnoreCase(ColumnTypeEnum.DATE.toString())
+										&& excelContent.get(key) != null) {
+									cellStyle.setDataFormat(dateFormat);
+									cell.setCellValue(excelContent.get(key));
+									cell.setCellStyle(cellStyle);
+								} else {
+									cell.setCellValue(excelContent.get(key));
+								}
+								cell.setCellStyle(style);
+							}
+						}
+					}
+					log.info("First Row:{}, Column:{}", (dtfRow-1), (dtfColumn-1));
+					if(cell != null) {
+						log.info("Last Row:{}, Column:{}", cell.getRowIndex()-1, cell.getColumnIndex()-1);
+					}
+					if (dataTable.getRegions() != null) {
+						for (Region region : dataTable.getRegions()) {
+							log.info("Region Info : {}", region);
+							Cell startCell = workSheet.getRow(dtfRow + region.getRow() - 1).getCell(dtfColumn + region.getColumn() - 1);
+							printCellValue(startCell);
+
+							if (RegionAction.MERGE.equals(region.getAction())) {
+								mergeCells(workSheet, dtfRow, dtfColumn, region);
+							}
+							if (RegionAction.SUM.equals(region.getAction())) {
+								int firstRow = dtfRow + region.getRow() - 1;
+								int firstCol = dtfColumn + region.getColumn() - 1;
+
+								if (RegionDirection.HORIZONTAL.equals(region.getDirection())) {
+									//Not Supported
+								} else if (RegionDirection.VERTICAL.equals(region.getDirection())) {
+
+									Cell endCell = workSheet.getRow(firstRow + region.getLength() - 1).getCell(firstCol);
+									String fromCell = new CellReference(startCell).formatAsString();
+									String toCell = new CellReference(endCell).formatAsString();
+									log.info("SUM Range[{}:{}]", fromCell, toCell);
+									Cell targetCell = getTargetCell(workSheet, ++rowNum, verticalSpace, headers.size(), firstCol);
+									targetCell.setCellType(Cell.CELL_TYPE_FORMULA);
+									targetCell.setCellFormula(String.format(SUM_FORMULA, fromCell, toCell));
+								}
+							}
+						}
+					}
+					++rowNum;
+					firstTable = false;
+				}
+			}
+			multiSheetMultiTableWorkBook.write(responseContent);
+			responseContent.flush();
+		} catch (Exception ex) {
+			throw new ServiceException(ex);
+		}
+		return responseContent;
+	}
+
+	private Cell getTargetCell(SXSSFSheet workSheet, int rowIndex, int verticalSpace, int cellCount, int colIndex) {
+		SXSSFRow row = (SXSSFRow) workSheet.createRow(rowIndex);
+		for (int i = 0; i < cellCount; i++) {
+			row.createCell((i) + verticalSpace);
+		}
+		return row.getCell(colIndex);
+	}
+
+	private void mergeCells(SXSSFSheet workSheet, int dtfRow, int dtfColumn, Region region) {
+		int firstRow = dtfRow + region.getRow() - 1;
+		int firstCol = dtfColumn + region.getColumn() - 1;
+
+		if (RegionDirection.HORIZONTAL.equals(region.getDirection())) {
+			workSheet.addMergedRegion(new CellRangeAddress(firstRow, firstRow, firstCol, firstCol + region.getLength() - 1));
+		} else if (RegionDirection.VERTICAL.equals(region.getDirection())) {
+			workSheet.addMergedRegion(new CellRangeAddress(firstRow, firstRow + region.getLength() - 1, firstCol, firstCol));
+		} else {
+			int secRow = dtfRow + region.getSecRow() - 1;
+			int secCol = dtfColumn + region.getSecColumn() - 1;
+			workSheet.addMergedRegion(new CellRangeAddress(firstRow, secRow, firstCol, secCol));
+		}
+	}
+
+	private void printCellValue(Cell regionCell) {
+		if (regionCell != null) {
+			switch (regionCell.getCellType()) {
+			case Cell.CELL_TYPE_BOOLEAN:
+				log.info("{}", regionCell.getBooleanCellValue());
+				break;
+			case Cell.CELL_TYPE_NUMERIC:
+				log.info("{}", regionCell.getNumericCellValue());
+				break;
+			case Cell.CELL_TYPE_STRING:
+				log.info("{}", regionCell.getStringCellValue());
+				break;
+			case Cell.CELL_TYPE_BLANK:
+				break;
+			case Cell.CELL_TYPE_ERROR:
+				log.info("{}", regionCell.getErrorCellValue());
+				break;
+
+			// CELL_TYPE_FORMULA will never occur
+			case Cell.CELL_TYPE_FORMULA:
+				break;
+			}
+		}
+	}
+	
+	
+	private void setWorksheetStyle(SXSSFSheet workSheet, List<Integer> columnWidth, String filterRange, int verticalSpace) {
+		workSheet.setPrintGridlines(true);
+		workSheet.setDisplayGridlines(true);
+		workSheet.setDefaultRowHeight((short) 0x175);
+		if (filterRange != null && !filterRange.isEmpty()) {
+			workSheet.setAutoFilter(CellRangeAddress.valueOf(filterRange));
+		}
+
+		if (columnWidth != null && columnWidth.size() > 0) {
+			for (int i = 0; i < columnWidth.size(); i++) {
+				workSheet.setColumnWidth(i + verticalSpace, columnWidth.get(i) != null ? columnWidth.get(i) : 25 * 100);
+			}
+		} else {
+			workSheet.setDefaultColumnWidth(25 * 256);
+		}
+
+	}
+
+	
+	private int writeExcelHeader(SXSSFWorkbook multiSheetMultiTableWorkBook, SXSSFSheet workSheet, List<String> excelHeader, int rowNum, int horizontalSpace,
+			int verticalSpace, Boolean firstTable) {
+
+		SXSSFRow rowTableHeading = null;
+		// -- Create the Header row ----
+		// -- Define the Header row height and style --
+		if (firstTable) {
+			rowTableHeading = (SXSSFRow) workSheet.createRow(rowNum + 1);
+		} else {
+			rowTableHeading = (SXSSFRow) workSheet.createRow(rowNum + horizontalSpace + 1);
+		}
+
+		rowTableHeading.setHeight((short) 0x200);
+		// -- Set Font for the worksheet ----
+		XSSFFont font = (XSSFFont) multiSheetMultiTableWorkBook.createFont();
+		font.setFontName(DEFAULT_FONT_CALIBRI);
+		font.setColor(new XSSFColor(new Color(255, 255, 255)));
+		font.setBold(true);
+
+		// -- Define the cell style
+		XSSFCellStyle cellStyle = (XSSFCellStyle) multiSheetMultiTableWorkBook.createCellStyle();
+		cellStyle.setAlignment(XSSFCellStyle.ALIGN_LEFT);
+		cellStyle.setBorderBottom(XSSFCellStyle.BORDER_THIN);
+		cellStyle.setBorderTop(XSSFCellStyle.BORDER_THIN);
+		cellStyle.setBorderLeft(XSSFCellStyle.BORDER_THIN);
+		cellStyle.setBorderRight(XSSFCellStyle.BORDER_THIN);
+
+		cellStyle.setFillForegroundColor(new XSSFColor(new Color(55, 95, 144)));
+		cellStyle.setFillPattern(XSSFCellStyle.SOLID_FOREGROUND);
+		cellStyle.setWrapText(true);
+		cellStyle.setFont(font);
+		for (int cellNo = 0; cellNo < excelHeader.size(); cellNo++) {
+			SXSSFCell headerCell = (SXSSFCell) rowTableHeading.createCell(cellNo + verticalSpace);
+			headerCell.setCellValue(excelHeader.get(cellNo));
+			headerCell.setCellStyle(cellStyle);
+		}
+		return rowTableHeading.getRowNum();
+	}
+	
+	
+	private XSSFCellStyle getCellStyle(SXSSFWorkbook workbook) {
+		// -- Define the cell style
+		XSSFCellStyle cellStyle = (XSSFCellStyle) workbook.createCellStyle();
+		cellStyle.setAlignment(XSSFCellStyle.ALIGN_LEFT);
+		cellStyle.setBorderBottom(XSSFCellStyle.BORDER_THIN);
+		cellStyle.setBorderTop(XSSFCellStyle.BORDER_THIN);
+		cellStyle.setBorderLeft(XSSFCellStyle.BORDER_THIN);
+		cellStyle.setBorderRight(XSSFCellStyle.BORDER_THIN);
+		cellStyle.setWrapText(true);
+		return cellStyle;
+	}
+
+	private void setWorkSheetHeader(String sheetHeader, SXSSFWorkbook multiSheetMultiTableWorkBook, SXSSFSheet workSheet, List<String> excelHeader,
+			int verticalSpace, CellsStyle sheetHeaderStyle) {
+		SXSSFRow rowSheetHeader = (SXSSFRow) workSheet.createRow(0);
+		XSSFFont font = (XSSFFont) multiSheetMultiTableWorkBook.createFont();
+		if (sheetHeaderStyle.getFontName() != null) {
+			font.setFontName(sheetHeaderStyle.getFontName().toString());
+		}
+		if (sheetHeaderStyle.getIsBold() != null) {
+			font.setBold(sheetHeaderStyle.getIsBold());
+		}
+		if (sheetHeaderStyle.getFontHeight() > 0)
+			font.setFontHeight(sheetHeaderStyle.getFontHeight());
+		if (sheetHeaderStyle.getFontColor() != null) {
+			String sheetHeaderColor = sheetHeaderStyle.getFontColor().toString();
+			setFontColor(sheetHeaderColor, font);
+		}
+		workSheet.addMergedRegion(new CellRangeAddress(0, // first row (0-based)
+				0, // last row (0-based)
+				verticalSpace, // first column (0-based)
+				excelHeader.size() + verticalSpace - 1 // last column (0-based)
+		));
+
+		if (sheetHeaderStyle.getHeaderHeight() > 0) {
+			rowSheetHeader.setHeight((short) sheetHeaderStyle.getHeaderHeight());
+		}
+		XSSFCellStyle cellStyle = (XSSFCellStyle) multiSheetMultiTableWorkBook.createCellStyle();
+		cellStyle.setAlignment(XSSFCellStyle.ALIGN_LEFT);
+		cellStyle.setWrapText(true);
+		cellStyle.setFont(font);
+		SXSSFCell headerCell = (SXSSFCell) rowSheetHeader.createCell(0 + verticalSpace);
+		headerCell.setCellValue(sheetHeader);
+		headerCell.setCellStyle(cellStyle);
+
+	}
+
+	private void setTableHeader(String tableHeader, SXSSFWorkbook multiSheetMultiTableWorkBook, SXSSFSheet workSheet, List<String> excelHeader, int rowNum,
+			int horizontalSpace, int verticalSpace, CellsStyle tableHeaderStyle, Boolean firstTable) {
+		SXSSFRow rowSheetHeader;
+		int mergedRow;
+		if (firstTable) {
+			rowSheetHeader = (SXSSFRow) workSheet.createRow(rowNum);
+			mergedRow = rowNum;
+		} else {
+			rowSheetHeader = (SXSSFRow) workSheet.createRow(rowNum + horizontalSpace );
+			mergedRow = rowNum + horizontalSpace;
+		}
+		XSSFFont font = (XSSFFont) multiSheetMultiTableWorkBook.createFont();
+		if (tableHeaderStyle.getFontName() != null) {
+			font.setFontName(tableHeaderStyle.getFontName().toString());
+		}
+		if (tableHeaderStyle.getIsBold() != null) {
+			font.setBold(tableHeaderStyle.getIsBold());
+		}
+		if (tableHeaderStyle.getFontHeight() > 0) {
+			font.setFontHeight(tableHeaderStyle.getFontHeight());
+		}
+		if (tableHeaderStyle.getFontColor() != null) {
+			setFontColor(tableHeaderStyle.getFontColor().toString(), font);
+		}
+		workSheet.addMergedRegion(new CellRangeAddress(mergedRow, // first row
+																	// (0-based)
+				mergedRow, // last row (0-based)
+				verticalSpace, // first column (0-based)
+				excelHeader.size() + verticalSpace - 1 // last column (0-based)
+		));
+
+		if (tableHeaderStyle.getHeaderHeight() > 0) {
+			rowSheetHeader.setHeight((short) tableHeaderStyle.getHeaderHeight());
+		}
+		XSSFCellStyle cellStyle = (XSSFCellStyle) multiSheetMultiTableWorkBook.createCellStyle();
+		cellStyle.setAlignment(XSSFCellStyle.ALIGN_LEFT);
+		cellStyle.setWrapText(true);
+		cellStyle.setFont(font);
+		SXSSFCell headerCell = (SXSSFCell) rowSheetHeader.createCell(0 + verticalSpace);
+		headerCell.setCellValue(tableHeader);
+		headerCell.setCellStyle(cellStyle);
+
+	}
+
+	private void setFontColor(String color, XSSFFont font) {
+		if (color.equalsIgnoreCase(ColorEnum.RED.toString())) {
+			font.setColor(new XSSFColor(Color.RED));
+		} else if (color.equalsIgnoreCase(ColorEnum.BLACK.toString())) {
+			font.setColor(new XSSFColor(Color.BLACK));
+		} else if (color.equalsIgnoreCase(ColorEnum.BLUE.toString())) {
+			font.setColor(new XSSFColor(Color.BLUE));
+		} else if (color.equalsIgnoreCase(ColorEnum.GREEN.toString())) {
+			font.setColor(new XSSFColor(Color.GREEN));
+		} else {
+			font.setColor(new XSSFColor(Color.YELLOW));
+		}
+	}
+
+}
