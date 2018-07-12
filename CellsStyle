@@ -1,0 +1,83 @@
+package com.scb.cic.excel.dto;
+import org.apache.poi.xssf.usermodel.XSSFCellStyle;
+
+import com.scb.cic.excel.util.ColorEnum;
+import com.scb.cic.excel.util.ColumnTypeEnum;
+import com.scb.cic.excel.util.FontEnum;
+
+public class CellsStyle {
+	
+	private ColumnTypeEnum sheatHeaderEnum;
+	private Boolean isBold;
+	private int headerHeight;
+	private double fontHeight;
+	private ColorEnum colorEnum;
+	private FontEnum fontEnum;
+	
+	public ColorEnum getFontColor() {
+		return colorEnum;
+	}
+
+	public void setFontColor(ColorEnum colorEnum) {
+		this.colorEnum = colorEnum;
+	}
+
+	public double getFontHeight() {
+		return fontHeight;
+	}
+
+	public void setFontHeight(double fontHeight) {
+		this.fontHeight = fontHeight;
+	}
+
+	public ColorEnum getFillForegroundColor() {
+		return colorEnum;
+	}
+
+	public void setFillForegroundColor(ColorEnum colorEnum) {
+		this.colorEnum = colorEnum;
+	}
+
+	public int getHeaderHeight() {
+		return headerHeight;
+	}
+
+	public void setHeaderHeight(int headerHeight) {
+		this.headerHeight = headerHeight;
+	}
+
+	private XSSFCellStyle xSSFCellStyle;
+	
+	public FontEnum getFontName() {
+		return fontEnum;
+	}
+
+	public void setFontName(FontEnum fontEnum) {
+		this.fontEnum = fontEnum;
+	}
+
+	public ColumnTypeEnum getSheatHeaderEnum() {
+		return sheatHeaderEnum;
+	}
+
+	public void setSheatHeaderEnum(ColumnTypeEnum sheatHeaderEnum) {
+		this.sheatHeaderEnum = sheatHeaderEnum;
+	}
+
+	public XSSFCellStyle getxSSFCellStyle() {
+		return xSSFCellStyle;
+	}
+
+	public void setxSSFCellStyle(XSSFCellStyle xSSFCellStyle) {
+		this.xSSFCellStyle = xSSFCellStyle;
+	}
+
+	public Boolean getIsBold() {
+		return isBold;
+	}
+
+	public void setIsBold(Boolean isBold) {
+		this.isBold = isBold;
+	}
+
+}
