@@ -1,0 +1,12 @@
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class WorkBookModel {
+
+	private String  workBookName;
+	private int lastRowNum;
+	private boolean startFlag;
+	private boolean endFlag;
+	private SXSSFWorkbook sxssfWorkbook;
+	
+}
