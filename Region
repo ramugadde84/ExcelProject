@@ -1,0 +1,108 @@
+import lombok.ToString;
+
+@ToString
+public class Region {
+
+	private Integer row;
+	private Integer column;
+	private Integer length;
+	private Integer secRow;
+	private Integer secColumn;
+	private String valgin;
+	private String halign;
+	private RegionDirection direction;
+	private RegionAction action;
+
+	public Region(int row, int col, int len) {
+		this.row = row;
+		this.column = col;
+		this.length = len;
+	}
+
+	public Region(int row, int col, int srow, int scol) {
+		this.row = row;
+		this.column = col;
+		this.secRow = srow;
+		this.secColumn = scol;
+	}
+
+	public Integer getRow() {
+		return row;
+	}
+
+	public void setRow(Integer row) {
+		this.row = row;
+	}
+
+	public Integer getColumn() {
+		return column;
+	}
+
+	public void setColumn(Integer column) {
+		this.column = column;
+	}
+
+	public Integer getLength() {
+		return length;
+	}
+
+	public void setLength(Integer length) {
+		this.length = length;
+	}
+
+	public Integer getSecRow() {
+		return secRow;
+	}
+
+	public void setSecRow(Integer secRow) {
+		this.secRow = secRow;
+	}
+
+	public Integer getSecColumn() {
+		return secColumn;
+	}
+
+	public void setSecColumn(Integer secColumn) {
+		this.secColumn = secColumn;
+	}
+
+	public String getValgin() {
+		return valgin;
+	}
+
+	public void setValgin(String valgin) {
+		this.valgin = valgin;
+	}
+
+	public String getHalign() {
+		return halign;
+	}
+
+	public void setHalign(String halign) {
+		this.halign = halign;
+	}
+
+	public RegionDirection getDirection() {
+		return direction;
+	}
+
+	public void setDirection(RegionDirection direction) {
+		this.direction = direction;
+	}
+
+	public RegionAction getAction() {
+		return action;
+	}
+
+	public void setAction(RegionAction action) {
+		this.action = action;
+	}
+
+	public enum RegionAction {
+		MERGE, SUM
+	}
+
+	public enum RegionDirection {
+		HORIZONTAL, VERTICAL
+	}
+}
